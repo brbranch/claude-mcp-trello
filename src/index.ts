@@ -41,33 +41,47 @@ const trelloGetCardsByListTool: Tool = {
   },
 };
 
-interface GetListsArgs {}
+interface GetListsArgs {
+  boardId: string;
+}
 
 const trelloGetListsTool: Tool = {
   name: "trello_get_lists",
-  description: "Retrieves all lists in the board.",
+  description: "Retrieves all lists in the specified board.",
   inputSchema: {
     type: "object",
-    properties: {},
+    properties: {
+      boardId: {
+        type: "string",
+        description: "The ID of the Trello board to get lists from",
+      },
+    },
+    required: ["boardId"],
   },
 };
 
 interface GetRecentActivityArgs {
+  boardId: string;
   limit?: number;
 }
 
 const trelloGetRecentActivityTool: Tool = {
   name: "trello_get_recent_activity",
   description:
-    "Retrieves the most recent board activity. The 'limit' argument can specify how many to retrieve.",
+    "Retrieves the most recent activity for a specified board. The 'limit' argument can specify how many to retrieve.",
   inputSchema: {
     type: "object",
     properties: {
+      boardId: {
+        type: "string",
+        description: "The ID of the Trello board to get activity from",
+      },
       limit: {
         type: "number",
         description: "Number of activities to retrieve (default: 10)",
       },
     },
+    required: ["boardId"],
   },
 };
 
@@ -167,21 +181,26 @@ const trelloArchiveCardTool: Tool = {
 };
 
 interface AddListArgs {
+  boardId: string;
   name: string;
 }
 
 const trelloAddListTool: Tool = {
   name: "trello_add_list",
-  description: "Adds a new list to the board.",
+  description: "Adds a new list to the specified board.",
   inputSchema: {
     type: "object",
     properties: {
+      boardId: {
+        type: "string",
+        description: "The ID of the Trello board to add the list to",
+      },
       name: {
         type: "string",
         description: "Name of the list",
       },
     },
-    required: ["name"],
+    required: ["boardId", "name"],
   },
 };
 
@@ -238,15 +257,73 @@ const trelloSearchAllBoardsTool: Tool = {
 };
 
 // --------------------------------------------------
+// Attachment Tools
+// --------------------------------------------------
+
+interface GetCardAttachmentsArgs {
+  cardId: string;
+}
+
+/**
+ * Tool for listing all attachments on a Trello card.
+ * Returns metadata about each attachment including name, size, type, and URL.
+ */
+const trelloGetCardAttachmentsTool: Tool = {
+  name: "trello_get_card_attachments",
+  description:
+    "Retrieves all attachments from a specified card. Returns attachment metadata including name, file size, MIME type, and URL. Use this to discover what attachments exist on a card before downloading.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cardId: {
+        type: "string",
+        description: "The ID of the Trello card to get attachments from",
+      },
+    },
+    required: ["cardId"],
+  },
+};
+
+interface DownloadAttachmentArgs {
+  cardId: string;
+  attachmentId: string;
+}
+
+/**
+ * Tool for downloading a specific attachment from a Trello card.
+ * Returns the attachment content as base64 for files uploaded to Trello,
+ * or just the URL for external links.
+ */
+const trelloDownloadAttachmentTool: Tool = {
+  name: "trello_download_attachment",
+  description:
+    "Downloads a specific attachment from a Trello card. For files uploaded directly to Trello, returns the content as base64-encoded data. For external links, returns the URL. Use trello_get_card_attachments first to get the attachment ID.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      cardId: {
+        type: "string",
+        description: "The ID of the Trello card containing the attachment",
+      },
+      attachmentId: {
+        type: "string",
+        description:
+          "The ID of the attachment to download (obtained from trello_get_card_attachments)",
+      },
+    },
+    required: ["cardId", "attachmentId"],
+  },
+};
+
+// --------------------------------------------------
 // Main server implementation
 // --------------------------------------------------
 async function main() {
   const trelloApiKey = process.env.TRELLO_API_KEY;
   const trelloToken = process.env.TRELLO_TOKEN;
-  const trelloBoardId = process.env.TRELLO_BOARD_ID;
 
-  if (!trelloApiKey || !trelloToken || !trelloBoardId) {
-    console.error("TRELLO_API_KEY / TRELLO_TOKEN / TRELLO_BOARD_ID are not set.");
+  if (!trelloApiKey || !trelloToken) {
+    console.error("TRELLO_API_KEY / TRELLO_TOKEN are not set.");
     process.exit(1);
   }
 
@@ -269,7 +346,6 @@ async function main() {
   const trelloClient = new TrelloClient({
     apiKey: trelloApiKey,
     token: trelloToken,
-    boardId: trelloBoardId,
   });
 
   // --------------------------------------------------
@@ -298,23 +374,29 @@ async function main() {
         }
 
         // --------------------------------------------------
-        // Retrieve all lists in the board
+        // Retrieve all lists in the specified board
         // --------------------------------------------------
         case "trello_get_lists": {
-          // No arguments
-          const response = await trelloClient.getLists();
+          const args = request.params.arguments as unknown as GetListsArgs;
+          if (!args.boardId) {
+            throw new Error("Missing required argument: boardId");
+          }
+          const response = await trelloClient.getLists(args.boardId);
           return {
             content: [{ type: "text", text: JSON.stringify(response) }],
           };
         }
 
         // --------------------------------------------------
-        // Recent activity on the board
+        // Recent activity on the specified board
         // --------------------------------------------------
         case "trello_get_recent_activity": {
           const args = request.params.arguments as unknown as GetRecentActivityArgs;
+          if (!args.boardId) {
+            throw new Error("Missing required argument: boardId");
+          }
           const limit = args.limit ?? 10; // Default 10
-          const response = await trelloClient.getRecentActivity(limit);
+          const response = await trelloClient.getRecentActivity(args.boardId, limit);
           return {
             content: [{ type: "text", text: JSON.stringify(response) }],
           };
@@ -375,14 +457,14 @@ async function main() {
         }
 
         // --------------------------------------------------
-        // Create a new list
+        // Create a new list on the specified board
         // --------------------------------------------------
         case "trello_add_list": {
           const args = request.params.arguments as unknown as AddListArgs;
-          if (!args.name) {
-            throw new Error("Missing required argument: name");
+          if (!args.boardId || !args.name) {
+            throw new Error("Missing required arguments: boardId, name");
           }
-          const response = await trelloClient.addList(args.name);
+          const response = await trelloClient.addList(args.boardId, args.name);
           return {
             content: [{ type: "text", text: JSON.stringify(response) }],
           };
@@ -416,6 +498,37 @@ async function main() {
           const args = request.params.arguments as unknown as TrelloSearchAllBoardsArgs;
           const limit = args.limit ?? 10;
           const response = await trelloClient.searchAllBoards(args.query, limit);
+          return {
+            content: [{ type: "text", text: JSON.stringify(response) }],
+          };
+        }
+
+        // --------------------------------------------------
+        // Get all attachments from a card
+        // --------------------------------------------------
+        case "trello_get_card_attachments": {
+          const args = request.params.arguments as unknown as GetCardAttachmentsArgs;
+          if (!args.cardId) {
+            throw new Error("Missing required argument: cardId");
+          }
+          const response = await trelloClient.getCardAttachments(args.cardId);
+          return {
+            content: [{ type: "text", text: JSON.stringify(response) }],
+          };
+        }
+
+        // --------------------------------------------------
+        // Download a specific attachment from a card
+        // --------------------------------------------------
+        case "trello_download_attachment": {
+          const args = request.params.arguments as unknown as DownloadAttachmentArgs;
+          if (!args.cardId || !args.attachmentId) {
+            throw new Error("Missing required arguments: cardId, attachmentId");
+          }
+          const response = await trelloClient.downloadAttachment(
+            args.cardId,
+            args.attachmentId
+          );
           return {
             content: [{ type: "text", text: JSON.stringify(response) }],
           };
@@ -456,6 +569,8 @@ async function main() {
         trelloArchiveListTool,
         trelloGetMyCardsTool,
         trelloSearchAllBoardsTool,
+        trelloGetCardAttachmentsTool,
+        trelloDownloadAttachmentTool,
       ],
     };
   });

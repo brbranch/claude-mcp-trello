@@ -29,23 +29,26 @@ Retrieves a list of cards contained in the specified list ID.
 ```
 
 ### `trello_get_lists`
-Retrieves all lists in the board.
+Retrieves all lists in the specified board.
 
 ```typescript
 {
   name: "trello_get_lists",
-  arguments: {}
+  arguments: {
+    boardId: string; // The ID of the Trello board to get lists from
+  }
 }
 ```
 
 ### `trello_get_recent_activity`
-Retrieves the most recent board activity. The `limit` argument can specify how many to retrieve (default: 10).
+Retrieves the most recent activity for a specified board. The `limit` argument can specify how many to retrieve (default: 10).
 
 ```typescript
 {
   name: "trello_get_recent_activity",
   arguments: {
-    limit?: number; // Optional: number of activities to retrieve
+    boardId: string; // The ID of the Trello board to get activity from
+    limit?: number;  // Optional: number of activities to retrieve
   }
 }
 ```
@@ -95,13 +98,14 @@ Archives (closes) the specified card.
 ```
 
 ### `trello_add_list`
-Adds a new list to the board.
+Adds a new list to the specified board.
 
 ```typescript
 {
   name: "trello_add_list",
   arguments: {
-    name: string; // Name of the new list
+    boardId: string; // The ID of the Trello board to add the list to
+    name: string;    // Name of the new list
   }
 }
 ```
@@ -140,6 +144,48 @@ Performs a cross-board search across all boards in the workspace (organization),
   }
 }
 ```
+
+### `trello_get_card_attachments`
+Retrieves all attachments from a specified card. Returns attachment metadata including name, file size, MIME type, and URL. Use this to discover what attachments exist on a card before downloading.
+
+```typescript
+{
+  name: "trello_get_card_attachments",
+  arguments: {
+    cardId: string;  // The ID of the Trello card to get attachments from
+  }
+}
+```
+
+Returns an array of attachment objects with the following properties:
+- `id`: Unique identifier for the attachment
+- `name`: Display name of the attachment
+- `url`: URL to access/download the attachment
+- `bytes`: Size of the attachment in bytes (0 for external links)
+- `mimeType`: MIME type (e.g., "image/png", "application/pdf")
+- `date`: ISO 8601 date string when the attachment was added
+- `isUpload`: Whether this is a Trello upload (true) or external link (false)
+- `fileName`: Filename of the attachment
+
+### `trello_download_attachment`
+Downloads a specific attachment from a Trello card. For files uploaded directly to Trello, returns the content as base64-encoded data. For external links, returns the URL.
+
+```typescript
+{
+  name: "trello_download_attachment",
+  arguments: {
+    cardId: string;       // The ID of the Trello card containing the attachment
+    attachmentId: string; // The ID of the attachment to download
+  }
+}
+```
+
+Returns an object with:
+- `attachment`: The full attachment metadata
+- `content`: Base64-encoded file content (for Trello uploads) or `null` (for external links)
+- `url`: Direct URL to the attachment
+
+**Usage tip**: First use `trello_get_card_attachments` to list all attachments and get their IDs, then use `trello_download_attachment` to download specific files.
 
 ## Rate Limiting
 
@@ -201,15 +247,16 @@ To integrate this MCP server with Claude Desktop, add the following configuratio
         ],
         "env": {
           "TRELLO_API_KEY": "{YOUR_KEY}",
-          "TRELLO_TOKEN": "{YOUR_TOKEN}",
-          "TRELLO_BOARD_ID": "{YOUR_BOARD_ID}"
+          "TRELLO_TOKEN": "{YOUR_TOKEN}"
         }
       }
     }
   }
   ```
 
-Make sure to replace {YOUR_NODE_PATH}, {YOUR_PATH}, {YOUR_KEY}, {YOUR_TOKEN}, and {YOUR_BOARD_ID} with the appropriate values for your environment.
+Make sure to replace {YOUR_NODE_PATH}, {YOUR_PATH}, {YOUR_KEY}, and {YOUR_TOKEN} with the appropriate values for your environment.
+
+**Note:** Board IDs are passed as parameters to individual tools rather than configured globally, allowing you to work with multiple boards.
 
 ## Contributing
 Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.

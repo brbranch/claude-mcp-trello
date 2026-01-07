@@ -1,7 +1,6 @@
 export interface TrelloConfig {
   apiKey: string;
   token: string;
-  boardId: string;
 }
 
 export interface TrelloCard {
@@ -62,6 +61,31 @@ export interface TrelloMember {
   fullName: string;
   username: string;
   avatarUrl: string | null;
+}
+
+/**
+ * Represents an attachment on a Trello card.
+ * Attachments can be files uploaded directly to Trello or links to external resources.
+ */
+export interface TrelloAttachment {
+  /** Unique identifier for the attachment */
+  id: string;
+  /** Display name of the attachment */
+  name: string;
+  /** URL to access/download the attachment */
+  url: string;
+  /** Size of the attachment in bytes (0 for external links) */
+  bytes: number;
+  /** MIME type of the attachment (e.g., "image/png", "application/pdf") */
+  mimeType: string;
+  /** ISO 8601 date string when the attachment was added */
+  date: string;
+  /** ID of the member who added the attachment */
+  idMember: string;
+  /** Whether this is an upload to Trello (true) or an external link (false) */
+  isUpload: boolean;
+  /** Filename of the attachment */
+  fileName: string;
 }
 
 export interface RateLimiter {
