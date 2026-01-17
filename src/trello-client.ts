@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember, TrelloAttachment } from './types.js';
+import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember, TrelloAttachment, TrelloLabel } from './types.js';
 import { createTrelloRateLimiters } from './rate-limiter.js';
 
 export class TrelloClient {
@@ -276,6 +276,61 @@ export class TrelloClient {
           error: `Download failed: ${errorMessage}`,
         };
       }
+    });
+  }
+
+  /**
+   * Moves a card to a different list
+   * @param cardId The ID of the card to move
+   * @param listId The ID of the destination list
+   */
+  async moveCard(cardId: string, listId: string): Promise<TrelloCard> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.put(`/cards/${cardId}`, {
+        idList: listId,
+      });
+      return response.data;
+    });
+  }
+
+  /**
+   * Adds a comment to a card
+   * @param cardId The ID of the card to comment on
+   * @param text The comment text
+   */
+  async addComment(cardId: string, text: string): Promise<TrelloAction> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.post(`/cards/${cardId}/actions/comments`, {
+        text,
+      });
+      return response.data;
+    });
+  }
+
+  /**
+   * Retrieves all labels on the board
+   * @param boardId The ID of the board to get labels from
+   */
+  async getLabels(boardId: string): Promise<TrelloLabel[]> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.get(`/boards/${boardId}/labels`);
+      return response.data;
+    });
+  }
+
+  /**
+   * Creates a new label on the board
+   * @param boardId The ID of the board to add the label to
+   * @param name The name of the label
+   * @param color The color of the label (green, yellow, orange, red, purple, blue, sky, lime, pink, black, null)
+   */
+  async addLabel(boardId: string, name: string, color: string): Promise<TrelloLabel> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.post(`/boards/${boardId}/labels`, {
+        name,
+        color,
+      });
+      return response.data;
     });
   }
 }

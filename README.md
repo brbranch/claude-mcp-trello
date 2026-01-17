@@ -187,6 +187,58 @@ Returns an object with:
 
 **Usage tip**: First use `trello_get_card_attachments` to list all attachments and get their IDs, then use `trello_download_attachment` to download specific files.
 
+### `trello_move_card`
+Moves a card to a different list.
+
+```typescript
+{
+  name: "trello_move_card",
+  arguments: {
+    cardId: string;  // The ID of the card to move
+    listId: string;  // The ID of the destination list
+  }
+}
+```
+
+### `trello_add_comment`
+Adds a comment to a card.
+
+```typescript
+{
+  name: "trello_add_comment",
+  arguments: {
+    cardId: string;  // The ID of the card to comment on
+    text: string;    // The comment text
+  }
+}
+```
+
+### `trello_get_labels`
+Retrieves all labels on the specified board.
+
+```typescript
+{
+  name: "trello_get_labels",
+  arguments: {
+    boardId: string;  // The ID of the Trello board to get labels from
+  }
+}
+```
+
+### `trello_add_label`
+Creates a new label on the specified board.
+
+```typescript
+{
+  name: "trello_add_label",
+  arguments: {
+    boardId: string;  // The ID of the Trello board to add the label to
+    name: string;     // The name of the label
+    color: string;    // The color (green, yellow, orange, red, purple, blue, sky, lime, pink, black)
+  }
+}
+```
+
 ## Rate Limiting
 
 The server implements a token bucket algorithm for rate limiting to comply with Trello's API limits:
