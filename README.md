@@ -168,7 +168,7 @@ Returns an array of attachment objects with the following properties:
 - `fileName`: Filename of the attachment
 
 ### `trello_download_attachment`
-Downloads a specific attachment from a Trello card. For files uploaded directly to Trello, returns the content as base64-encoded data. For external links, returns the URL.
+Downloads a specific attachment from a Trello card and saves it locally. For files uploaded directly to Trello, saves to `TRELLO_ATTACHMENT_DIR` and returns the local file path. For external links, returns just the URL.
 
 ```typescript
 {
@@ -182,10 +182,32 @@ Downloads a specific attachment from a Trello card. For files uploaded directly 
 
 Returns an object with:
 - `attachment`: The full attachment metadata
-- `content`: Base64-encoded file content (for Trello uploads) or `null` (for external links)
+- `path`: Local file path where the attachment was saved (for Trello uploads) or `null` (for external links)
+- `md5`: MD5 hash of the downloaded file (for Trello uploads) or `null`
 - `url`: Direct URL to the attachment
+- `error`: Error message if download failed (optional)
 
-**Usage tip**: First use `trello_get_card_attachments` to list all attachments and get their IDs, then use `trello_download_attachment` to download specific files.
+**Note**: Requires `TRELLO_ATTACHMENT_DIR` environment variable to be set.
+
+**Usage tip**: First use `trello_get_card_attachments` to list all attachments and get their IDs, then use `trello_download_attachment` to download specific files. After reviewing, use `trello_delete_local_attachment` to clean up.
+
+### `trello_delete_local_attachment`
+Deletes a locally saved attachment file. For security, only files within the configured `TRELLO_ATTACHMENT_DIR` can be deleted.
+
+```typescript
+{
+  name: "trello_delete_local_attachment",
+  arguments: {
+    filePath: string;  // The full path of the local file to delete
+  }
+}
+```
+
+Returns an object with:
+- `success`: Boolean indicating if deletion was successful
+- `message`: Result message or error description
+
+**Security**: This tool will refuse to delete files outside of `TRELLO_ATTACHMENT_DIR` to prevent accidental deletion of important files.
 
 ### `trello_move_card`
 Moves a card to a different list.
@@ -299,14 +321,23 @@ To integrate this MCP server with Claude Desktop, add the following configuratio
         ],
         "env": {
           "TRELLO_API_KEY": "{YOUR_KEY}",
-          "TRELLO_TOKEN": "{YOUR_TOKEN}"
+          "TRELLO_TOKEN": "{YOUR_TOKEN}",
+          "TRELLO_ATTACHMENT_DIR": "{YOUR_PROJECT}/tmp"
         }
       }
     }
   }
   ```
 
-Make sure to replace {YOUR_NODE_PATH}, {YOUR_PATH}, {YOUR_KEY}, and {YOUR_TOKEN} with the appropriate values for your environment.
+Make sure to replace {YOUR_NODE_PATH}, {YOUR_PATH}, {YOUR_KEY}, {YOUR_TOKEN}, and {YOUR_PROJECT} with the appropriate values for your environment.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TRELLO_API_KEY` | Yes | Your Trello API key |
+| `TRELLO_TOKEN` | Yes | Your Trello API token |
+| `TRELLO_ATTACHMENT_DIR` | No | Directory to save downloaded attachments. Required for `trello_download_attachment` and `trello_delete_local_attachment` tools. |
 
 **Note:** Board IDs are passed as parameters to individual tools rather than configured globally, allowing you to work with multiple boards.
 
