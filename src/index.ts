@@ -387,13 +387,13 @@ interface DownloadAttachmentArgs {
 
 /**
  * Tool for downloading a specific attachment from a Trello card.
- * Returns the attachment content as base64 for files uploaded to Trello,
- * or just the URL for external links.
+ * Saves the file locally to TRELLO_ATTACHMENT_DIR and returns the file path and MD5 hash.
+ * For external links, returns just the URL.
  */
 const trelloDownloadAttachmentTool: Tool = {
   name: "trello_download_attachment",
   description:
-    "Downloads a specific attachment from a Trello card. For files uploaded directly to Trello, returns the content as base64-encoded data. For external links, returns the URL. Use trello_get_card_attachments first to get the attachment ID.",
+    "Downloads a specific attachment from a Trello card and saves it locally. Returns the local file path and MD5 hash. For external links, returns just the URL. Use trello_get_card_attachments first to get the attachment ID. Use trello_delete_local_attachment to clean up after reviewing.",
   inputSchema: {
     type: "object",
     properties: {
@@ -411,16 +411,45 @@ const trelloDownloadAttachmentTool: Tool = {
   },
 };
 
+interface DeleteLocalAttachmentArgs {
+  filePath: string;
+}
+
+/**
+ * Tool for deleting a locally saved attachment file.
+ * Only allows deletion of files within TRELLO_ATTACHMENT_DIR for security.
+ */
+const trelloDeleteLocalAttachmentTool: Tool = {
+  name: "trello_delete_local_attachment",
+  description:
+    "Deletes a locally saved attachment file. For security, only files within the configured TRELLO_ATTACHMENT_DIR can be deleted. Use this after reviewing a downloaded attachment to clean up temporary files.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      filePath: {
+        type: "string",
+        description: "The full path of the local file to delete (must be within TRELLO_ATTACHMENT_DIR)",
+      },
+    },
+    required: ["filePath"],
+  },
+};
+
 // --------------------------------------------------
 // Main server implementation
 // --------------------------------------------------
 async function main() {
   const trelloApiKey = process.env.TRELLO_API_KEY;
   const trelloToken = process.env.TRELLO_TOKEN;
+  const trelloAttachmentDir = process.env.TRELLO_ATTACHMENT_DIR;
 
   if (!trelloApiKey || !trelloToken) {
     console.error("TRELLO_API_KEY / TRELLO_TOKEN are not set.");
     process.exit(1);
+  }
+
+  if (trelloAttachmentDir) {
+    console.error(`Attachment directory: ${trelloAttachmentDir}`);
   }
 
   console.error("Starting Trello MCP Server...");
@@ -442,6 +471,7 @@ async function main() {
   const trelloClient = new TrelloClient({
     apiKey: trelloApiKey,
     token: trelloToken,
+    attachmentDir: trelloAttachmentDir,
   });
 
   // --------------------------------------------------
@@ -631,6 +661,20 @@ async function main() {
         }
 
         // --------------------------------------------------
+        // Delete a locally saved attachment file
+        // --------------------------------------------------
+        case "trello_delete_local_attachment": {
+          const args = request.params.arguments as unknown as DeleteLocalAttachmentArgs;
+          if (!args.filePath) {
+            throw new Error("Missing required argument: filePath");
+          }
+          const response = trelloClient.deleteLocalAttachment(args.filePath);
+          return {
+            content: [{ type: "text", text: JSON.stringify(response) }],
+          };
+        }
+
+        // --------------------------------------------------
         // Move card to another list
         // --------------------------------------------------
         case "trello_move_card": {
@@ -723,6 +767,7 @@ async function main() {
         trelloSearchAllBoardsTool,
         trelloGetCardAttachmentsTool,
         trelloDownloadAttachmentTool,
+        trelloDeleteLocalAttachmentTool,
         trelloMoveCardTool,
         trelloAddCommentTool,
         trelloGetLabelsTool,

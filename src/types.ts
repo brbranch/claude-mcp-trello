@@ -1,6 +1,7 @@
 export interface TrelloConfig {
   apiKey: string;
   token: string;
+  attachmentDir?: string;
 }
 
 export interface TrelloCard {

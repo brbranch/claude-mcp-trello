@@ -1,4 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember, TrelloAttachment, TrelloLabel } from './types.js';
 import { createTrelloRateLimiters } from './rate-limiter.js';
 
@@ -188,55 +191,52 @@ export class TrelloClient {
   }
 
   /**
-   * Downloads an attachment from a Trello card and returns its content as base64.
+   * 添付ファイルをダウンロードしてローカルに保存する。
    *
-   * Note: This method is suitable for small to medium-sized files. For very large files,
-   * consider using the attachment URL directly with appropriate streaming.
-   *
-   * @param cardId - The ID of the card containing the attachment
-   * @param attachmentId - The ID of the attachment to download
+   * @param cardId - カードID
+   * @param attachmentId - 添付ファイルID
    * @returns Promise resolving to an object containing:
-   *   - attachment: The attachment metadata
-   *   - content: Base64-encoded file content (for Trello uploads)
-   *   - url: Direct URL to the attachment (for external links or as fallback)
-   *
-   * @example
-   * const result = await client.downloadAttachment('cardId', 'attachmentId');
-   * if (result.content) {
-   *   // Decode base64 content
-   *   const buffer = Buffer.from(result.content, 'base64');
-   * }
+   *   - attachment: 添付ファイルのメタデータ
+   *   - path: 保存先のファイルパス（TRELLO_ATTACHMENT_DIR設定時のみ）
+   *   - md5: ファイルのMD5ハッシュ（保存成功時のみ）
+   *   - url: 添付ファイルのURL
    */
   async downloadAttachment(cardId: string, attachmentId: string): Promise<{
     attachment: TrelloAttachment;
-    content: string | null;
+    path: string | null;
+    md5: string | null;
     url: string;
     error?: string;
   }> {
     return this.handleRequest(async () => {
-      // First, get the attachment metadata
       const metadataResponse = await this.axiosInstance.get(
         `/cards/${cardId}/attachments/${attachmentId}`
       );
       const attachment: TrelloAttachment = metadataResponse.data;
 
-      // If it's not a Trello upload (external link), just return the URL
       if (!attachment.isUpload) {
         return {
           attachment,
-          content: null,
+          path: null,
+          md5: null,
           url: attachment.url,
         };
       }
 
-      // For Trello uploads, download the actual content
-      // The download endpoint requires OAuth header authentication (not query params)
+      if (!this.config.attachmentDir) {
+        return {
+          attachment,
+          path: null,
+          md5: null,
+          url: attachment.url,
+          error: 'TRELLO_ATTACHMENT_DIR is not set',
+        };
+      }
+
       try {
         const contentResponse = await axios.get(attachment.url, {
           responseType: 'arraybuffer',
-          // Follow redirects (Trello often redirects to S3 signed URLs)
           maxRedirects: 5,
-          // Increase timeout for larger files
           timeout: 60000,
           headers: {
             'Accept': '*/*',
@@ -244,16 +244,23 @@ export class TrelloClient {
           },
         });
 
-        // Convert to base64 for safe transmission
-        const base64Content = Buffer.from(contentResponse.data).toString('base64');
+        const buffer = Buffer.from(contentResponse.data);
+        const md5Hash = crypto.createHash('md5').update(buffer).digest('hex');
+        const filePath = path.join(this.config.attachmentDir, attachment.fileName);
+
+        if (!fs.existsSync(this.config.attachmentDir)) {
+          fs.mkdirSync(this.config.attachmentDir, { recursive: true });
+        }
+
+        fs.writeFileSync(filePath, buffer);
 
         return {
           attachment,
-          content: base64Content,
+          path: filePath,
+          md5: md5Hash,
           url: attachment.url,
         };
       } catch (error) {
-        // Extract meaningful error message
         let errorMessage = 'Unknown error';
         if (axios.isAxiosError(error)) {
           if (error.response) {
@@ -267,11 +274,12 @@ export class TrelloClient {
           errorMessage = error.message;
         }
 
-        console.error('Failed to download attachment content:', errorMessage);
+        console.error('Failed to download attachment:', errorMessage);
 
         return {
           attachment,
-          content: null,
+          path: null,
+          md5: null,
           url: attachment.url,
           error: `Download failed: ${errorMessage}`,
         };
@@ -332,5 +340,54 @@ export class TrelloClient {
       });
       return response.data;
     });
+  }
+
+  /**
+   * ローカルに保存した添付ファイルを削除する。
+   * セキュリティのため、TRELLO_ATTACHMENT_DIR内のファイルのみ削除可能。
+   *
+   * @param filePath - 削除するファイルのパス
+   * @returns Promise resolving to an object containing:
+   *   - success: 削除成功かどうか
+   *   - message: 結果メッセージ
+   */
+  deleteLocalAttachment(filePath: string): { success: boolean; message: string } {
+    if (!this.config.attachmentDir) {
+      return {
+        success: false,
+        message: 'TRELLO_ATTACHMENT_DIR is not set',
+      };
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    const resolvedAttachmentDir = path.resolve(this.config.attachmentDir);
+
+    if (!resolvedPath.startsWith(resolvedAttachmentDir + path.sep)) {
+      return {
+        success: false,
+        message: `Security error: Cannot delete files outside of attachment directory (${resolvedAttachmentDir})`,
+      };
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return {
+        success: false,
+        message: `File not found: ${resolvedPath}`,
+      };
+    }
+
+    try {
+      fs.unlinkSync(resolvedPath);
+      return {
+        success: true,
+        message: `Deleted: ${resolvedPath}`,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `Failed to delete: ${errorMessage}`,
+      };
+    }
   }
 }
