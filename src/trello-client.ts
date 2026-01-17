@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember } from './types.js';
+import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember, TrelloLabel } from './types.js';
 import { createTrelloRateLimiters } from './rate-limiter.js';
 
 export class TrelloClient {
@@ -145,6 +145,59 @@ export class TrelloClient {
           cards_limit: limit,
           organization: true,
         },
+      });
+      return response.data;
+    });
+  }
+
+  /**
+   * カードを別のリストに移動する
+   * @param cardId 移動するカードのID
+   * @param listId 移動先のリストID
+   */
+  async moveCard(cardId: string, listId: string): Promise<TrelloCard> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.put(`/cards/${cardId}`, {
+        idList: listId,
+      });
+      return response.data;
+    });
+  }
+
+  /**
+   * カードにコメントを追加する
+   * @param cardId コメントを追加するカードのID
+   * @param text コメント本文
+   */
+  async addComment(cardId: string, text: string): Promise<TrelloAction> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.post(`/cards/${cardId}/actions/comments`, {
+        text,
+      });
+      return response.data;
+    });
+  }
+
+  /**
+   * ボードのラベル一覧を取得する
+   */
+  async getLabels(): Promise<TrelloLabel[]> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.get(`/boards/${this.config.boardId}/labels`);
+      return response.data;
+    });
+  }
+
+  /**
+   * ボードにラベルを作成する
+   * @param name ラベル名
+   * @param color ラベルの色 (green, yellow, orange, red, purple, blue, sky, lime, pink, black, null)
+   */
+  async addLabel(name: string, color: string): Promise<TrelloLabel> {
+    return this.handleRequest(async () => {
+      const response = await this.axiosInstance.post(`/boards/${this.config.boardId}/labels`, {
+        name,
+        color,
       });
       return response.data;
     });
