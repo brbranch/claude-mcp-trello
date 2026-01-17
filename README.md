@@ -141,6 +141,55 @@ Performs a cross-board search across all boards in the workspace (organization),
 }
 ```
 
+### `trello_move_card`
+Moves a card to a different list.
+
+```typescript
+{
+  name: "trello_move_card",
+  arguments: {
+    cardId: string;  // The ID of the card to move
+    listId: string;  // The ID of the destination list
+  }
+}
+```
+
+### `trello_add_comment`
+Adds a comment to a card.
+
+```typescript
+{
+  name: "trello_add_comment",
+  arguments: {
+    cardId: string;  // The ID of the card to comment on
+    text: string;    // The comment text
+  }
+}
+```
+
+### `trello_get_labels`
+Retrieves all labels on the board.
+
+```typescript
+{
+  name: "trello_get_labels",
+  arguments: {}
+}
+```
+
+### `trello_add_label`
+Creates a new label on the board.
+
+```typescript
+{
+  name: "trello_add_label",
+  arguments: {
+    name: string;   // The name of the label
+    color: string;  // The color (green, yellow, orange, red, purple, blue, sky, lime, pink, black)
+  }
+}
+```
+
 ## Rate Limiting
 
 The server implements a token bucket algorithm for rate limiting to comply with Trello's API limits:
