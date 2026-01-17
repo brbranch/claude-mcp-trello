@@ -151,9 +151,9 @@ export class TrelloClient {
   }
 
   /**
-   * カードを別のリストに移動する
-   * @param cardId 移動するカードのID
-   * @param listId 移動先のリストID
+   * Moves a card to a different list
+   * @param cardId The ID of the card to move
+   * @param listId The ID of the destination list
    */
   async moveCard(cardId: string, listId: string): Promise<TrelloCard> {
     return this.handleRequest(async () => {
@@ -165,9 +165,9 @@ export class TrelloClient {
   }
 
   /**
-   * カードにコメントを追加する
-   * @param cardId コメントを追加するカードのID
-   * @param text コメント本文
+   * Adds a comment to a card
+   * @param cardId The ID of the card to comment on
+   * @param text The comment text
    */
   async addComment(cardId: string, text: string): Promise<TrelloAction> {
     return this.handleRequest(async () => {
@@ -179,7 +179,7 @@ export class TrelloClient {
   }
 
   /**
-   * ボードのラベル一覧を取得する
+   * Retrieves all labels on the board
    */
   async getLabels(): Promise<TrelloLabel[]> {
     return this.handleRequest(async () => {
@@ -189,9 +189,9 @@ export class TrelloClient {
   }
 
   /**
-   * ボードにラベルを作成する
-   * @param name ラベル名
-   * @param color ラベルの色 (green, yellow, orange, red, purple, blue, sky, lime, pink, black, null)
+   * Creates a new label on the board
+   * @param name The name of the label
+   * @param color The color of the label (green, yellow, orange, red, purple, blue, sky, lime, pink, black, null)
    */
   async addLabel(name: string, color: string): Promise<TrelloLabel> {
     return this.handleRequest(async () => {
