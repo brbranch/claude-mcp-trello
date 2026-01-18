@@ -2,12 +2,25 @@ import axios, { AxiosInstance } from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { TrelloConfig, TrelloCard, TrelloList, TrelloAction, TrelloMember, TrelloAttachment, TrelloLabel } from './types.js';
+import {
+  TrelloConfig,
+  TrelloCard,
+  TrelloList,
+  TrelloAction,
+  TrelloMember,
+  TrelloAttachment,
+  TrelloLabel,
+  CardChange,
+  WaitForChangesResult,
+  CardSnapshot,
+  BoardSnapshot,
+} from './types.js';
 import { createTrelloRateLimiters } from './rate-limiter.js';
 
 export class TrelloClient {
   private axiosInstance: AxiosInstance;
   private rateLimiter;
+  private boardSnapshots: Map<string, BoardSnapshot> = new Map();
 
   constructor(private config: TrelloConfig) {
     this.axiosInstance = axios.create({
@@ -389,5 +402,187 @@ export class TrelloClient {
         message: `Failed to delete: ${errorMessage}`,
       };
     }
+  }
+
+  /**
+   * ボードの変更を監視し、変更があるまでポーリングする。
+   *
+   * @param boardId - 監視するボードID
+   * @param listIds - 監視するリストID（省略時は全リスト）
+   * @param pollInterval - ポーリング間隔（ミリ秒、デフォルト: 5000）
+   * @param timeout - タイムアウト（ミリ秒、デフォルト: 300000）
+   * @returns 変更内容とタイムアウト有無
+   */
+  async waitForChanges(
+    boardId: string,
+    listIds?: string[],
+    pollInterval: number = 5000,
+    timeout: number = 300000
+  ): Promise<WaitForChangesResult> {
+    const startTime = Date.now();
+
+    // 初回スナップショット取得
+    let snapshot = await this.createBoardSnapshot(boardId, listIds);
+    this.boardSnapshots.set(boardId, snapshot);
+
+    // リスト名のマップを取得
+    const lists = await this.getLists(boardId);
+    const listNameMap = new Map<string, string>();
+    lists.forEach(list => listNameMap.set(list.id, list.name));
+
+    while (Date.now() - startTime < timeout) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      // 新しいスナップショット取得
+      const newSnapshot = await this.createBoardSnapshot(boardId, listIds);
+
+      // アクティビティから変更を検出
+      const changes = await this.detectChanges(boardId, snapshot, newSnapshot, listNameMap);
+
+      if (changes.length > 0) {
+        this.boardSnapshots.set(boardId, newSnapshot);
+        return { changes, timedOut: false };
+      }
+
+      snapshot = newSnapshot;
+    }
+
+    return { changes: [], timedOut: true };
+  }
+
+  /**
+   * ボードのスナップショットを作成
+   */
+  private async createBoardSnapshot(boardId: string, listIds?: string[]): Promise<BoardSnapshot> {
+    const lists = await this.getLists(boardId);
+    const targetListIds = listIds || lists.map(l => l.id);
+
+    const cards = new Map<string, CardSnapshot>();
+    const listNameMap = new Map<string, string>();
+
+    for (const list of lists) {
+      listNameMap.set(list.id, list.name);
+      if (targetListIds.includes(list.id)) {
+        const listCards = await this.getCardsByList(list.id);
+        for (const card of listCards) {
+          cards.set(card.id, {
+            id: card.id,
+            name: card.name,
+            desc: card.desc,
+            idList: card.idList,
+            idLabels: card.idLabels || [],
+          });
+        }
+      }
+    }
+
+    return { cards, lists: listNameMap };
+  }
+
+  /**
+   * スナップショット間の変更を検出
+   */
+  private async detectChanges(
+    boardId: string,
+    oldSnapshot: BoardSnapshot,
+    newSnapshot: BoardSnapshot,
+    listNameMap: Map<string, string>
+  ): Promise<CardChange[]> {
+    const changes: CardChange[] = [];
+
+    // アクティビティからコメントを検出
+    const actions = await this.getRecentActivity(boardId, 50);
+    const oldActionId = oldSnapshot.lastActionId;
+
+    for (const action of actions) {
+      if (oldActionId && action.id <= oldActionId) break;
+
+      if (action.type === 'commentCard' && action.data.card) {
+        const cardId = action.data.card.id;
+        const card = newSnapshot.cards.get(cardId);
+        if (card) {
+          const commentText = action.data.text || '';
+          const isClaudeComment = commentText.includes('🤖 by Claude Code');
+          changes.push({
+            type: 'commented',
+            cardId: card.id,
+            cardName: card.name,
+            cardDescription: card.desc,
+            listId: card.idList,
+            listName: listNameMap.get(card.idList) || '',
+            labels: card.idLabels,
+            comment: commentText,
+            isClaudeComment,
+          });
+        }
+      }
+    }
+
+    if (actions.length > 0) {
+      newSnapshot.lastActionId = actions[0].id;
+    }
+
+    // カードの追加/移動/ラベル変更/説明変更を検出
+    for (const [cardId, newCard] of newSnapshot.cards) {
+      const oldCard = oldSnapshot.cards.get(cardId);
+
+      if (!oldCard) {
+        // 新規追加
+        changes.push({
+          type: 'added',
+          cardId: newCard.id,
+          cardName: newCard.name,
+          cardDescription: newCard.desc,
+          listId: newCard.idList,
+          listName: listNameMap.get(newCard.idList) || '',
+          labels: newCard.idLabels,
+        });
+      } else {
+        // 移動検出
+        if (oldCard.idList !== newCard.idList) {
+          changes.push({
+            type: 'moved',
+            cardId: newCard.id,
+            cardName: newCard.name,
+            cardDescription: newCard.desc,
+            listId: newCard.idList,
+            listName: listNameMap.get(newCard.idList) || '',
+            labels: newCard.idLabels,
+            oldListId: oldCard.idList,
+          });
+        }
+
+        // ラベル変更検出
+        const oldLabels = oldCard.idLabels.sort().join(',');
+        const newLabels = newCard.idLabels.sort().join(',');
+        if (oldLabels !== newLabels) {
+          changes.push({
+            type: 'label_changed',
+            cardId: newCard.id,
+            cardName: newCard.name,
+            cardDescription: newCard.desc,
+            listId: newCard.idList,
+            listName: listNameMap.get(newCard.idList) || '',
+            labels: newCard.idLabels,
+            oldLabels: oldCard.idLabels,
+          });
+        }
+
+        // 説明変更検出
+        if (oldCard.desc !== newCard.desc) {
+          changes.push({
+            type: 'description_changed',
+            cardId: newCard.id,
+            cardName: newCard.name,
+            cardDescription: newCard.desc,
+            listId: newCard.idList,
+            listName: listNameMap.get(newCard.idList) || '',
+            labels: newCard.idLabels,
+          });
+        }
+      }
+    }
+
+    return changes;
   }
 }

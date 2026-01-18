@@ -353,6 +353,46 @@ const trelloAddLabelTool: Tool = {
 };
 
 // --------------------------------------------------
+// Wait for changes tool
+// --------------------------------------------------
+
+interface WaitForChangesArgs {
+  boardId: string;
+  listIds?: string[];
+  pollInterval?: number;
+  timeout?: number;
+}
+
+const trelloWaitForChangesTool: Tool = {
+  name: "trello_wait_for_changes",
+  description:
+    "Polls the Trello board and waits until changes are detected. Returns when any card is added, moved, commented, has label changes, or description changes. This is a blocking call that will wait until changes are detected or timeout occurs.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      boardId: {
+        type: "string",
+        description: "The ID of the Trello board to monitor",
+      },
+      listIds: {
+        type: "array",
+        items: { type: "string" },
+        description: "List IDs to monitor (optional, monitors all lists if not specified)",
+      },
+      pollInterval: {
+        type: "number",
+        description: "Polling interval in milliseconds (default: 5000)",
+      },
+      timeout: {
+        type: "number",
+        description: "Timeout in milliseconds (default: 300000 = 5 minutes)",
+      },
+    },
+    required: ["boardId"],
+  },
+};
+
+// --------------------------------------------------
 // Attachment Tools
 // --------------------------------------------------
 
@@ -730,6 +770,25 @@ async function main() {
           };
         }
 
+        // --------------------------------------------------
+        // Wait for changes on the board
+        // --------------------------------------------------
+        case "trello_wait_for_changes": {
+          const args = request.params.arguments as unknown as WaitForChangesArgs;
+          if (!args.boardId) {
+            throw new Error("Missing required argument: boardId");
+          }
+          const response = await trelloClient.waitForChanges(
+            args.boardId,
+            args.listIds,
+            args.pollInterval,
+            args.timeout
+          );
+          return {
+            content: [{ type: "text", text: JSON.stringify(response) }],
+          };
+        }
+
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }
@@ -772,6 +831,7 @@ async function main() {
         trelloAddCommentTool,
         trelloGetLabelsTool,
         trelloAddLabelTool,
+        trelloWaitForChangesTool,
       ],
     };
   });

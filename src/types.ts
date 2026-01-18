@@ -93,3 +93,43 @@ export interface RateLimiter {
   canMakeRequest(): boolean;
   waitForAvailableToken(): Promise<void>;
 }
+
+// --------------------------------------------------
+// Types for wait_for_changes
+// --------------------------------------------------
+
+export type ChangeType = 'added' | 'moved' | 'commented' | 'label_changed' | 'description_changed';
+
+export interface CardChange {
+  type: ChangeType;
+  cardId: string;
+  cardName: string;
+  cardDescription: string;
+  listId: string;
+  listName: string;
+  labels: string[];
+  // Type-specific fields
+  comment?: string;
+  isClaudeComment?: boolean;
+  oldListId?: string;
+  oldLabels?: string[];
+}
+
+export interface WaitForChangesResult {
+  changes: CardChange[];
+  timedOut: boolean;
+}
+
+export interface CardSnapshot {
+  id: string;
+  name: string;
+  desc: string;
+  idList: string;
+  idLabels: string[];
+}
+
+export interface BoardSnapshot {
+  cards: Map<string, CardSnapshot>;
+  lists: Map<string, string>; // listId -> listName
+  lastActionId?: string;
+}
