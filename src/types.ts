@@ -126,6 +126,7 @@ export interface CardSnapshot {
   desc: string;
   idList: string;
   idLabels: string[];
+  dateLastActivity: string;
 }
 
 export interface BoardSnapshot {

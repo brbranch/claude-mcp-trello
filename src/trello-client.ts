@@ -421,14 +421,28 @@ export class TrelloClient {
   ): Promise<WaitForChangesResult> {
     const startTime = Date.now();
 
-    // 初回スナップショット取得
-    let snapshot = await this.createBoardSnapshot(boardId, listIds);
-    this.boardSnapshots.set(boardId, snapshot);
-
     // リスト名のマップを取得
     const lists = await this.getLists(boardId);
     const listNameMap = new Map<string, string>();
     lists.forEach(list => listNameMap.set(list.id, list.name));
+
+    // 現在のスナップショット取得
+    const currentSnapshot = await this.createBoardSnapshot(boardId, listIds);
+
+    // 前回のスナップショットがあれば、それと比較して変更を検出
+    const previousSnapshot = this.boardSnapshots.get(boardId);
+    if (previousSnapshot) {
+      const changes = await this.detectChanges(boardId, previousSnapshot, currentSnapshot, listNameMap);
+      if (changes.length > 0) {
+        // 変更があれば即座に返す（スナップショットを更新）
+        this.boardSnapshots.set(boardId, currentSnapshot);
+        return { changes, timedOut: false };
+      }
+    }
+
+    // 前回のスナップショットがないか、変更がなければポーリング開始
+    let snapshot = currentSnapshot;
+    this.boardSnapshots.set(boardId, snapshot);
 
     while (Date.now() - startTime < timeout) {
       await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -471,12 +485,17 @@ export class TrelloClient {
             desc: card.desc,
             idList: card.idList,
             idLabels: card.idLabels || [],
+            dateLastActivity: card.dateLastActivity,
           });
         }
       }
     }
 
-    return { cards, lists: listNameMap };
+    // 最新のアクションIDを取得してスナップショットに含める
+    const actions = await this.getRecentActivity(boardId, 1);
+    const lastActionId = actions.length > 0 ? actions[0].id : undefined;
+
+    return { cards, lists: listNameMap, lastActionId };
   }
 
   /**
